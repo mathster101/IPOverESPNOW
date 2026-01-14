@@ -38,7 +38,7 @@ Install required Python dependencies
 On each computer, run the Python program with sudo (required for TUN device creation):
 
 ```bash
-sudo python runTunnel.py --tun_ip <IP_ADDRESS> --serial_port <SERIAL_PORT>
+sudo python main.py --tun_ip <IP_ADDRESS> --serial_port <SERIAL_PORT>
 ```
 
 #### Arguments
@@ -50,12 +50,12 @@ sudo python runTunnel.py --tun_ip <IP_ADDRESS> --serial_port <SERIAL_PORT>
 
 **Computer 1:**
 ```bash
-sudo python runTunnel.py --tun_ip 10.0.0.1 --serial_port /dev/ttyUSB0
+sudo python main.py --tun_ip 10.0.0.1 --serial_port /dev/ttyUSB0
 ```
 
 **Computer 2:**
 ```bash
-sudo python runTunnel.py --tun_ip 10.0.0.2 --serial_port /dev/ttyUSB0
+sudo python main.py --tun_ip 10.0.0.2 --serial_port /dev/ttyUSB0
 ```
 
 ## Configuration
