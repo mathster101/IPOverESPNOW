@@ -57,6 +57,8 @@ class Tunnel:
     def handle_serial_data(self):
         try:
             serial_data = self.serial_interface.read()
+            
+            # Try to decode as text for control messages
             try:
                 decoded_message = serial_data.decode().strip()
                 if self.handle_control_message(decoded_message):
@@ -66,12 +68,11 @@ class Tunnel:
             
             try:
                 cobs_decoded = cobs.decode(serial_data)
-                if self.handle_control_message(cobs_decoded):
-                    return
                 self.tun_interface.write(cobs_decoded)
                 print(f"{time.time():.3f}  ({len(serial_data)}){len(cobs_decoded)} Bytes: Serial-->TUN")
             except Exception as e:
                 print(f"Error decoding packet:\n{e}")
+                
             print("#" * 40)
         except Exception as e:
             print(f"Error handling serial data: {e}")
