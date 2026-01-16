@@ -13,16 +13,12 @@
 
 uint8_t broadcastAddress[] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
 char inputBuffer[MAXIMUM_MESSAGE_SIZE];
-char debugBuffer[100];
 
 ESPNowWrapper espnowwrapper;
 ESPMessage espMessage;
 
-void printDebug(const char *dbgMessage)
-{
-    sprintf(debugBuffer, "<DEBUG>%s\0", dbgMessage);
-    Serial.print(debugBuffer);
-}
+size_t cobsEncode(const uint8_t *input, size_t length, uint8_t *output);
+void printDebug(const char *dbgMessage);
 
 class OLEDHandler
 {
@@ -99,7 +95,7 @@ void oledTaskWrapper(void *parameter)
     }
 }
 
-void radioSendHandler()
+void serialToRadio()
 {
     size_t bytesRead = Serial.readBytesUntil(SERIAL_DELIMITER, inputBuffer, MAXIMUM_MESSAGE_SIZE - 1);
     inputBuffer[bytesRead] = '\0';
@@ -108,10 +104,14 @@ void radioSendHandler()
         return;
     }
     strcpy(espMessage.data, inputBuffer);
+    char printBuffer[100];
+    unsigned long start = micros();
     auto result = espnowwrapper.send(broadcastAddress, espMessage, bytesRead + 1);
+    sprintf(printBuffer, "%u Bytes sent in %luus", bytesRead, micros() - start);
+    printDebug(printBuffer);
 }
 
-void radioReceiveHandler()
+void radioToSerial()
 {
     char databuffer[2048];
 
@@ -164,12 +164,61 @@ void loop()
 {
     if (Serial.available() > 0)
     {
-        radioSendHandler();
+        serialToRadio();
     }
 
     int pendingReadPackets = espnowwrapper.getReceiveQueueLength();
     if (pendingReadPackets > 0)
     {
-        radioReceiveHandler();
+        radioToSerial();
     }
+}
+
+size_t cobsEncode(const uint8_t *input, size_t length, uint8_t *output)
+{
+    //thanks claude!
+    size_t readIndex = 0;
+    size_t writeIndex = 1;
+    size_t codeIndex = 0;
+    uint8_t code = 1;
+    
+    while(readIndex < length)
+    {
+        if(input[readIndex] == 0)
+        {
+            output[codeIndex] = code;
+            code = 1;
+            codeIndex = writeIndex++;
+            readIndex++;
+        }
+        else
+        {
+            output[writeIndex++] = input[readIndex++];
+            code++;
+            if(code == 0xFF)
+            {
+                output[codeIndex] = code;
+                code = 1;
+                codeIndex = writeIndex++;
+            }
+        }
+    }
+    
+    output[codeIndex] = code;
+    
+    return writeIndex;
+}
+
+void printDebug(const char *dbgMessage)
+{
+    char printBuffer[512];;
+    sprintf(printBuffer, "<DEBUG>%s", dbgMessage);
+    
+    // technically cobs encoding the debug data is not really necessary
+    // but I'm doing it for the sake of uniformity
+    uint8_t cobsBuffer[sizeof(printBuffer) + 1];
+    size_t encodedLen = cobsEncode((uint8_t*)printBuffer, strlen(printBuffer), cobsBuffer);
+    
+    Serial.write(cobsBuffer, encodedLen);
+    Serial.write(SERIAL_DELIMITER);
 }

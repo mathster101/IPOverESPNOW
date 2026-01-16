@@ -66,7 +66,7 @@ esp_err_t ESPNowWrapper::send(uint8_t *macAddress, ESPMessage &message, uint16_t
 
     uint32_t entryTime = millis();
     message.size = length;
-    while (!readyToSend && (millis() - entryTime) > 100)
+    while (!readyToSend && (millis() - entryTime) < 10)
     {
         vTaskDelay(1);
     };
