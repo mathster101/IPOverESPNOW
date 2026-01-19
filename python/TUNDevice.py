@@ -2,7 +2,7 @@ from pyroute2 import IPRoute
 import os
 import fcntl
 import struct
-from python import config
+import config
 
 class TUNDevice:
     TUNSETIFF   = 0x400454ca

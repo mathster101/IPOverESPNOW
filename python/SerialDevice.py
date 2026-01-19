@@ -1,6 +1,6 @@
 import serial
 import time
-from python import config
+import config
 
 class SerialDevice:
     def __init__(self, name, baudrate):

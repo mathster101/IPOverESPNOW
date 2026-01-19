@@ -29,8 +29,8 @@ void serialToRadio()
     char printBuffer[100];
     unsigned long start = micros();
     auto result = espnowwrapper.send(broadcastAddress, espMessage, bytesRead + 1);
-    sprintf(printBuffer, "%u Bytes sent in %luus\n", bytesRead, micros() - start);
-    printDebug(printBuffer);
+    // sprintf(printBuffer, "%u Bytes sent in %luus\n", bytesRead, micros() - start);
+    // printDebug(printBuffer);
 }
 
 void radioToSerial()

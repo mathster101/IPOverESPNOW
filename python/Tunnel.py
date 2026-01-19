@@ -1,8 +1,8 @@
 import select
 from cobs import cobs
-from python import TUNDevice
-from python import SerialDevice
-from python import config
+import TUNDevice
+import SerialDevice
+import config
 import time
 
 class Tunnel:
@@ -18,7 +18,7 @@ class Tunnel:
         self.file_descriptors_to_monitor = [self.tun_fd, self.serial_fd]
         self.last_packet_time = time.time()
 
-    def handle_tun_data(self):
+    def tun_to_radio_serial(self):
         """Handle data from TUN interface and forward to serial."""
         try:
             tun_data = self.tun_interface.read()
@@ -54,7 +54,7 @@ class Tunnel:
         
         return False
 
-    def handle_serial_data(self):
+    def radio_serial_to_tun(self):
         try:
             serial_data = self.serial_interface.read()
             
@@ -95,9 +95,9 @@ class Tunnel:
         
         for fd in inputs:
             if fd == self.tun_fd:
-                self.handle_tun_data()
+                self.tun_to_radio_serial()
             elif fd == self.serial_fd:
-                self.handle_serial_data()
+                self.radio_serial_to_tun()
 
     def run(self):
         try:

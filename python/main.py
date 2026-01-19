@@ -1,5 +1,5 @@
 import argparse
-from python import Tunnel
+import Tunnel
 
 
 def main():
