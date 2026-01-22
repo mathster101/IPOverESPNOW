@@ -6,7 +6,7 @@
 
 #define BAUD_RATE_SERIAL 921600
 #define SERIAL_DELIMITER '\0'
-#define SERIAL_BUFFER_SIZE 20480
+#define SERIAL_BUFFER_SIZE 30 * 1024
 #define SCREEN_ADDRESS 0x3c
 #define SDA 17
 #define SCL 18
@@ -99,8 +99,9 @@ void oledTaskWrapper(void *parameter)
     }
 }
 
-void radioSendHandler()
+void tunToSerialToRadio()
 {
+    Serial.setTimeout(2);
     size_t bytesRead = Serial.readBytesUntil(SERIAL_DELIMITER, inputBuffer, MAXIMUM_MESSAGE_SIZE - 1);
     inputBuffer[bytesRead] = '\0';
     if (bytesRead == 0)
@@ -111,7 +112,7 @@ void radioSendHandler()
     auto result = espnowwrapper.send(broadcastAddress, espMessage, bytesRead + 1);
 }
 
-void radioReceiveHandler()
+void radioToSerialToRadio()
 {
     char databuffer[2048];
 
@@ -162,14 +163,15 @@ void setup()
 
 void loop()
 {
-    if (Serial.available() > 0)
+    while (Serial.available() > 0)
     {
-        radioSendHandler();
+        tunToSerialToRadio();
+        yield();
     }
 
-    int pendingReadPackets = espnowwrapper.getReceiveQueueLength();
-    if (pendingReadPackets > 0)
+    while (espnowwrapper.getReceiveQueueLength() > 0)
     {
-        radioReceiveHandler();
+        radioToSerialToRadio();
+        yield();
     }
 }

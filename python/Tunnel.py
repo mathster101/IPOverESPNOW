@@ -18,14 +18,14 @@ class Tunnel:
         self.file_descriptors_to_monitor = [self.tun_fd, self.serial_fd]
         self.last_packet_time = time.time()
 
-    def handle_tun_data(self):
+    def tun_to_radio(self):
         """Handle data from TUN interface and forward to serial."""
         try:
             tun_data = self.tun_interface.read()
             cobs_encoded = cobs.encode(tun_data)
             self.serial_interface.write(cobs_encoded)
-            print(f"{time.time():.3f}  {len(tun_data)}({len(cobs_encoded)}) Bytes: TUN-->Serial")
-            print("#" * 40)
+            #print(f"{time.time():.3f}  {len(tun_data)}({len(cobs_encoded)}) Bytes: TUN-->Serial")
+            #print("#" * 40)
         except Exception as e:
             print(f"Error handling TUN data: {e}")
 
@@ -54,7 +54,7 @@ class Tunnel:
         
         return False
 
-    def handle_serial_data(self):
+    def radio_to_tun(self):
         try:
             serial_data = self.serial_interface.read()
             
@@ -69,11 +69,11 @@ class Tunnel:
             try:
                 cobs_decoded = cobs.decode(serial_data)
                 self.tun_interface.write(cobs_decoded)
-                print(f"{time.time():.3f}  ({len(serial_data)}){len(cobs_decoded)} Bytes: Serial-->TUN")
+                #print(f"{time.time():.3f}  ({len(serial_data)}){len(cobs_decoded)} Bytes: Serial-->TUN")
             except Exception as e:
                 print(f"Error decoding packet:\n{e}")
                 
-            print("#" * 40)
+            #print("#" * 40)
         except Exception as e:
             print(f"Error handling serial data: {e}")
 
@@ -95,9 +95,9 @@ class Tunnel:
         
         for fd in inputs:
             if fd == self.tun_fd:
-                self.handle_tun_data()
+                self.tun_to_radio()
             elif fd == self.serial_fd:
-                self.handle_serial_data()
+                self.radio_to_tun()
 
     def run(self):
         try:
