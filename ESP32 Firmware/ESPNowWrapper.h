@@ -24,10 +24,14 @@ private:
     static std::atomic<bool> readyToSend;
     static std::queue<ESPMessage> receiveQueue;
     static std::mutex queueMutex;
+    TaskHandle_t beaconTaskHandle;
+    static void broadcastMACBeacon(void *parameter);
     friend void dataRecvCB(const esp_now_recv_info_t *esp_now_info, const uint8_t *incomingData, int len);
     friend void dataSendCB(const wifi_tx_info_t *info, esp_now_send_status_t status);
 
 public:
+    static uint8_t boundPeerAddress[6];
+    static bool isBound;
     esp_err_t init();
     esp_err_t addPeer(uint8_t *macAddress, uint8_t channel);
     esp_err_t send(uint8_t *macAddress, ESPMessage &message);

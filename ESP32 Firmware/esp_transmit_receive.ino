@@ -9,11 +9,9 @@
 #define SERIAL_BUFFER_SIZE 30720
 
 
-uint8_t broadcastAddress[] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
-char inputBuffer[MAXIMUM_MESSAGE_SIZE];
-
 ESPNowWrapper espnowwrapper;
 ESPMessage espMessage;
+char inputBuffer[MAXIMUM_MESSAGE_SIZE];
 
 void printDebug(const char *dbgMessage);
 
@@ -28,7 +26,7 @@ void serialToRadio()
     strcpy(espMessage.data, inputBuffer);
     char printBuffer[100];
     unsigned long start = micros();
-    auto result = espnowwrapper.send(broadcastAddress, espMessage, bytesRead + 1);
+    auto result = espnowwrapper.send(espnowwrapper.boundPeerAddress, espMessage, bytesRead + 1);
     // sprintf(printBuffer, "%u Bytes sent in %luus\n", bytesRead, micros() - start);
     // printDebug(printBuffer);
 }
@@ -56,14 +54,6 @@ void setup()
         while (true)
         {
             printDebug("Error Initializing ESP-NOW");
-            delay(5000);
-        }
-    }
-    if (espnowwrapper.addPeer(broadcastAddress, 0) != ESP_OK)
-    {
-        while (true)
-        {
-            printDebug("Error adding broadcast peer");
             delay(5000);
         }
     }
