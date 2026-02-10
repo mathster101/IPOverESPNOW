@@ -4,9 +4,17 @@ import TUNDevice
 import SerialDevice
 import config
 import time
+import logging
 
 class Tunnel:
     def __init__(self, tun_ip: str, serial_port: str):
+        # Setup logging
+        logging.basicConfig(
+            filename='tunnel_errors.log',
+            level=logging.ERROR,
+            format='%(asctime)s - %(levelname)s - %(message)s'
+        )
+        
         self.tun_interface = TUNDevice.TUNDevice('nowNet0', tun_ip)
         self.tun_fd = self.tun_interface.getfd()
         
@@ -24,41 +32,19 @@ class Tunnel:
             tun_data = self.tun_interface.read()
             cobs_encoded = cobs.encode(tun_data)
             self.serial_interface.write(cobs_encoded)
-            #print(f"{time.time():.3f}  {len(tun_data)}({len(cobs_encoded)}) Bytes: TUN-->Serial")
-            #print("#" * 40)
+            print(f"{time.time():.3f}  {len(tun_data)}({len(cobs_encoded)}) Bytes: TUN-->Serial")
         except Exception as e:
-            print(f"Error handling TUN data: {e}")
+            logging.error(f"Error handling TUN data: {e}")
 
     def handle_control_message(self, message: str) -> bool:
         if "<DEBUG>" in message:
             print(message)
-            return True
-        
-        if "<PONG>" in message:
-            try:
-                send_time = float(message.split(',')[1])
-                latency = ((time.time() - send_time) / 2) * 1000
-                print(f"LINK LATENCY = {latency:.1f}ms")
-            except (IndexError, ValueError) as e:
-                print(f"Error parsing PONG message: {e}")
-            return True
-        
-        if "<PING>" in message:
-            try:
-                send_time = message.split(',')[1]
-                pong_packet = f"<PONG>,{send_time}"
-                self.serial_interface.write(cobs.encode(pong_packet.encode()))
-            except IndexError as e:
-                print(f"Error parsing PING message: {e}")
-            return True
-        
+            return True        
         return False
 
     def radio_serial_to_tun(self):
         try:
             serial_data = self.serial_interface.read()
-            
-            # Try to decode as text for control messages
             try:
                 decoded_message = serial_data.decode().strip()
                 if self.handle_control_message(decoded_message):
@@ -69,20 +55,11 @@ class Tunnel:
             try:
                 cobs_decoded = cobs.decode(serial_data)
                 self.tun_interface.write(cobs_decoded)
-                #print(f"{time.time():.3f}  ({len(serial_data)}){len(cobs_decoded)} Bytes: Serial-->TUN")
+                print(f"{time.time():.3f}  ({len(serial_data)}){len(cobs_decoded)} Bytes: Serial-->TUN")
             except Exception as e:
-                print(f"Error decoding packet:\n{e}")
-                
-            #print("#" * 40)
+                logging.error(f"Error decoding packet: {e}")
         except Exception as e:
-            print(f"Error handling serial data: {e}")
-
-    def ping(self):
-        try:
-            ping_packet = f"<PING>,{time.time()}".encode()
-            self.serial_interface.write(ping_packet)
-        except Exception as e:
-            print(f"Error sending ping: {e}")
+            logging.error(f"Error handling serial data: {e}")
 
     def process_events(self):
         outputs = []
@@ -90,8 +67,7 @@ class Tunnel:
             self.file_descriptors_to_monitor, 
             outputs, 
             self.file_descriptors_to_monitor, 
-            config.SELECT_TIMEOUT
-        )
+            config.SELECT_TIMEOUT)
         
         for fd in inputs:
             if fd == self.tun_fd:
@@ -103,12 +79,6 @@ class Tunnel:
         try:
             while True:
                 self.process_events()
-                
-                # Send periodic ping
-                current_time = time.time()
-                if current_time - self.last_packet_time > config.PING_INTERVAL:
-                    self.ping()
-                    self.last_packet_time = current_time
                     
         except KeyboardInterrupt:
             print("\nShutting down...")
