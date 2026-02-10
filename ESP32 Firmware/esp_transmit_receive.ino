@@ -1,22 +1,23 @@
 #include "ESPNowWrapper.h"
-#include <Wire.h>
-#include <Adafruit_GFX.h>
-#include <Adafruit_SSD1306.h>
 #include <cstring>
 
 #define BAUD_RATE_SERIAL 921600
 #define SERIAL_DELIMITER '\0'
-#define SERIAL_BUFFER_SIZE 30720
+#define SERIAL_BUFFER_SIZE 1500 * 30
 
 
 ESPNowWrapper espnowwrapper;
 ESPMessage espMessage;
-char inputBuffer[MAXIMUM_MESSAGE_SIZE];
 
-void printDebug(const char *dbgMessage);
+void printDebug(const char *dbgMessage)
+{
+    Serial.printf("<DEBUG>%s", dbgMessage);
+    Serial.print(SERIAL_DELIMITER);
+}
 
 void serialToRadio()
 {
+    char inputBuffer[MAXIMUM_MESSAGE_SIZE];
     size_t bytesRead = Serial.readBytesUntil(SERIAL_DELIMITER, inputBuffer, MAXIMUM_MESSAGE_SIZE - 1);
     inputBuffer[bytesRead] = '\0';
     if (bytesRead == 0)
@@ -24,17 +25,11 @@ void serialToRadio()
         return;
     }
     strcpy(espMessage.data, inputBuffer);
-    char printBuffer[100];
-    unsigned long start = micros();
-    auto result = espnowwrapper.send(espnowwrapper.boundPeerAddress, espMessage, bytesRead + 1);
-    // sprintf(printBuffer, "%u Bytes sent in %luus\n", bytesRead, micros() - start);
-    // printDebug(printBuffer);
+    auto result = espnowwrapper.send(espnowwrapper.getBoundPeerAddress(), espMessage, bytesRead + 1);
 }
 
 void radioToSerial()
 {
-    char databuffer[2048];
-
     if (espnowwrapper.receive(&espMessage) == -1)
         return;
 
@@ -47,8 +42,6 @@ void setup()
     Serial.setRxBufferSize(SERIAL_BUFFER_SIZE);
     Serial.setTxBufferSize(SERIAL_BUFFER_SIZE);
     Serial.begin(BAUD_RATE_SERIAL);
-
-
     if (espnowwrapper.init() != ESP_OK)
     {
         while (true)
@@ -57,9 +50,7 @@ void setup()
             delay(5000);
         }
     }
-
     printDebug("Init complete");
-
 }
 
 void loop()
@@ -69,18 +60,8 @@ void loop()
         serialToRadio();
     }
 
-    int pendingReadPackets = espnowwrapper.getReceiveQueueLength();
-    if (pendingReadPackets > 0)
+    if (espnowwrapper.areRadioRecvPacketsAvailable())
     {
         radioToSerial();
     }
-}
-
-
-void printDebug(const char *dbgMessage)
-{
-    char printBuffer[512];
-    sprintf(printBuffer, "<DEBUG>%s", dbgMessage);
-    Serial.print(printBuffer);
-    Serial.print(SERIAL_DELIMITER);
 }

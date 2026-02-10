@@ -1,30 +1,33 @@
 #include "ESPNowWrapper.h"
 #include <cstring>
+#include <queue>
+#include <mutex>
+#include <atomic>
 
-std::atomic<bool> ESPNowWrapper::readyToSend{true};
-std::queue<ESPMessage> ESPNowWrapper::receiveQueue;
-std::mutex ESPNowWrapper::queueMutex;
-int ESPNowWrapper::lastRSSI = -99;
-bool ESPNowWrapper::isBound = false;
+#define RECV_QUEUE_SIZE 10
+
+
 uint8_t ESPNowWrapper::boundPeerAddress[6];
-static uint8_t broadcastAddress[] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
 
-void printDebug2(const char *dbgMessage)
-{
-    Serial.printf("<DEBUG>%s", dbgMessage);
-    Serial.write('\0');
-}
+static uint8_t broadcastAddress[] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
+static std::queue<ESPMessage> receiveQueue;
+static std::mutex queueMutex;
+static int lastRSSI;
+static std::atomic<bool> readyToSend{true};
+static TaskHandle_t beaconTaskHandle;
+static bool isBound = false;
+
+static void broadcastMACBeacon(void *parameter);
 
 void dataRecvCB(const esp_now_recv_info_t *esp_now_info, const uint8_t *incomingData, int len)
 {
-    ESPNowWrapper::lastRSSI = esp_now_info->rx_ctrl->rssi;
+    lastRSSI = esp_now_info->rx_ctrl->rssi;
 
     ESPMessage newMessage;
     memcpy(&newMessage, incomingData, len);
     if (strcmp("BROADCAST BEACON", newMessage.data) == 0)
     {
-        printDebug2("got a bcast beacon!");
-        if (ESPNowWrapper::isBound)
+        if (isBound)
         {
             return;
         }
@@ -35,20 +38,16 @@ void dataRecvCB(const esp_now_recv_info_t *esp_now_info, const uint8_t *incoming
         esp_err_t result = esp_now_add_peer(&peer);
         if (result == ESP_OK)
         {
-            Serial.printf("Bound to MAC: %02X:%02X:%02X:%02X:%02X:%02X\n",
-                          esp_now_info->src_addr[0], esp_now_info->src_addr[1],
-                          esp_now_info->src_addr[2], esp_now_info->src_addr[3],
-                          esp_now_info->src_addr[4], esp_now_info->src_addr[5]);
-            ESPNowWrapper::isBound = true;
-            memcpy(ESPNowWrapper::boundPeerAddress, esp_now_info->src_addr, 6);
+            isBound = true;
+            ESPNowWrapper::setBoundPeerAddress(esp_now_info->src_addr);
         }
         return;
     }
 
-    std::lock_guard<std::mutex> lock(ESPNowWrapper::queueMutex); // unlocks by itself when out of scope
-    if (ESPNowWrapper::receiveQueue.size() < RECV_QUEUE_SIZE)
+    std::lock_guard<std::mutex> lock(queueMutex); // unlocks by itself when out of scope
+    if (receiveQueue.size() < RECV_QUEUE_SIZE)
     {
-        ESPNowWrapper::receiveQueue.push(newMessage);
+        receiveQueue.push(newMessage);
     }
     else
         ; //just drop the packet
@@ -56,7 +55,7 @@ void dataRecvCB(const esp_now_recv_info_t *esp_now_info, const uint8_t *incoming
 
 void dataSendCB(const wifi_tx_info_t *info, esp_now_send_status_t status)
 {
-    ESPNowWrapper::readyToSend = true;
+    readyToSend = true;
 }
 
 esp_err_t ESPNowWrapper::init()
@@ -73,32 +72,22 @@ esp_err_t ESPNowWrapper::init()
     result = esp_now_register_send_cb(dataSendCB);
      if (result != ESP_OK)
         return result;
-    result = addPeer(broadcastAddress, 0);
+    esp_now_peer_info_t broadcastPeer = {};
+    memcpy(broadcastPeer.peer_addr, broadcastAddress, 6);
+    broadcastPeer.channel = 0;
+    broadcastPeer.encrypt = false;
+    result = esp_now_add_peer(&broadcastPeer);
     if (result != ESP_OK)
         return result;
     isBound = false;
     xTaskCreate(
-        ESPNowWrapper::broadcastMACBeacon,
+        broadcastMACBeacon,
         "BeaconTask",
         4096,
-        this,
+        nullptr,
         1,
         &beaconTaskHandle);
     return result;
-}
-
-esp_err_t ESPNowWrapper::addPeer(uint8_t *macAddress, uint8_t channel = 0)
-{
-    esp_now_peer_info_t peer = {};
-    memcpy(peer.peer_addr, macAddress, 6);
-    peer.channel = channel;
-    peer.encrypt = false;
-    return esp_now_add_peer(&peer);
-}
-
-esp_err_t ESPNowWrapper::send(uint8_t *macAddress, ESPMessage &message)
-{
-    return this->send(macAddress, message, sizeof(ESPMessage));
 }
 
 esp_err_t ESPNowWrapper::send(uint8_t *macAddress, ESPMessage &message, uint16_t length)
@@ -132,9 +121,9 @@ esp_err_t ESPNowWrapper::receive(ESPMessage *recvdMessage)
     }
 }
 
-int ESPNowWrapper::getReceiveQueueLength()
+bool ESPNowWrapper::areRadioRecvPacketsAvailable()
 {
-    return this->receiveQueue.size();
+    return !receiveQueue.empty();
 }
 
 int ESPNowWrapper::getRSSI()
@@ -142,10 +131,18 @@ int ESPNowWrapper::getRSSI()
     return lastRSSI;
 }
 
-void ESPNowWrapper::broadcastMACBeacon(void *parameter)
+uint8_t* ESPNowWrapper::getBoundPeerAddress()
 {
-    ESPNowWrapper *instance = static_cast<ESPNowWrapper *>(parameter);
+    return boundPeerAddress;
+}
 
+void ESPNowWrapper::setBoundPeerAddress(const uint8_t* address)
+{
+    memcpy(boundPeerAddress, address, 6);
+}
+
+void broadcastMACBeacon(void *parameter)
+{
     ESPMessage bcastBeacon;
     strcpy(bcastBeacon.data, "BROADCAST BEACON");
     bcastBeacon.size = strlen(bcastBeacon.data) + 1;
@@ -153,7 +150,6 @@ void ESPNowWrapper::broadcastMACBeacon(void *parameter)
     while (true)
     {
         esp_now_send(broadcastAddress, (uint8_t *)&bcastBeacon, bcastBeacon.size + 2);
-        printDebug2("sending beacon!");
-        vTaskDelay(pdMS_TO_TICKS(1000));
+        vTaskDelay(pdMS_TO_TICKS(500));
     }
 }
