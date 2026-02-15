@@ -1,5 +1,6 @@
 from pyroute2 import IPRoute
 import os
+import subprocess
 import fcntl
 import struct
 import config
@@ -39,6 +40,11 @@ class TUNDevice:
         self.ip.link('set', index = idx, state = 'up')
         self.ip.addr('add', index = idx, address = self.deviceIP, prefixlen = 24)
         self.ip.link('set', index = idx, mtu = config.MTU)
+        subprocess.run(['ip', 'link', 'set', self.deviceName, 'txqueuelen', '25'], check=True)
+        subprocess.run([
+            'tc', 'qdisc', 'add', 'dev', self.deviceName, 'root',
+            'tbf', 'rate', '600kbit', 'burst', '5kb', 'latency', '25ms'
+        ], check=True)
     
     def getfd(self):
         return self.tun_fd

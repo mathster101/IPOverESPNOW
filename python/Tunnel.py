@@ -8,7 +8,6 @@ import logging
 
 class Tunnel:
     def __init__(self, tun_ip: str, serial_port: str):
-        # Setup logging
         logging.basicConfig(
             filename='tunnel_errors.log',
             level=logging.ERROR,
@@ -24,7 +23,6 @@ class Tunnel:
         self.serial_fd = self.serial_interface.getfd()
         
         self.file_descriptors_to_monitor = [self.tun_fd, self.serial_fd]
-        self.last_packet_time = time.time()
 
     def tun_to_radio_serial(self):
         """Handle data from TUN interface and forward to serial."""
