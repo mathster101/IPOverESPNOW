@@ -21,10 +21,10 @@ private:
 public:
     esp_err_t init();
     esp_err_t send(uint8_t *macAddress, ESPMessage &message, uint16_t length);
+    esp_err_t sendWithRetries(uint8_t *macAddress, ESPMessage &message, uint16_t length);
     esp_err_t receive(ESPMessage *recvdMessage);
     bool areRadioRecvPacketsAvailable();
     int getRSSI();
-    ////////////////////////////////
     static uint8_t *getBoundPeerAddress();
     static void setBoundPeerAddress(const uint8_t *address);
 };

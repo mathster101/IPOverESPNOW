@@ -5,9 +5,14 @@ import SerialDevice
 import config
 import time
 import logging
+import os
 
 class Tunnel:
     def __init__(self, tun_ip: str, serial_port: str):
+        # Delete log file if it exists
+        if os.path.exists('tunnel_errors.log'):
+            os.remove('tunnel_errors.log')
+        
         logging.basicConfig(
             filename='tunnel_errors.log',
             level=logging.ERROR,
@@ -30,7 +35,7 @@ class Tunnel:
             tun_data = self.tun_interface.read()
             cobs_encoded = cobs.encode(tun_data)
             self.serial_interface.write(cobs_encoded)
-            print(f"{time.time():.3f}  {len(tun_data)}({len(cobs_encoded)}) Bytes: TUN-->Serial")
+            #print(f"{time.time():.3f}  {len(tun_data)}({len(cobs_encoded)}) Bytes: TUN-->Serial")
         except Exception as e:
             logging.error(f"Error handling TUN data: {e}")
 
@@ -53,7 +58,7 @@ class Tunnel:
             try:
                 cobs_decoded = cobs.decode(serial_data)
                 self.tun_interface.write(cobs_decoded)
-                print(f"{time.time():.3f}  ({len(serial_data)}){len(cobs_decoded)} Bytes: Serial-->TUN")
+                #print(f"{time.time():.3f}  ({len(serial_data)}){len(cobs_decoded)} Bytes: Serial-->TUN")
             except Exception as e:
                 logging.error(f"Error decoding packet: {e}")
         except Exception as e:

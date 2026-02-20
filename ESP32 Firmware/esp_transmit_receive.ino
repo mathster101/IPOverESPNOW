@@ -15,26 +15,26 @@ void printDebug(const char *dbgMessage)
     Serial.print(SERIAL_DELIMITER);
 }
 
-void serialToRadio()
+void sendSerialToRadio()
 {
-    char inputBuffer[MAXIMUM_MESSAGE_SIZE];
-    size_t bytesRead = Serial.readBytesUntil(SERIAL_DELIMITER, inputBuffer, MAXIMUM_MESSAGE_SIZE - 1);
-    inputBuffer[bytesRead] = '\0';
-    if (bytesRead == 0)
-    {
-        return;
-    }
-    strcpy(espMessage.data, inputBuffer);
-    auto result = espnowwrapper.send(espnowwrapper.getBoundPeerAddress(), espMessage, bytesRead + 1);
+  char inputBuffer[MAXIMUM_MESSAGE_SIZE];
+  size_t bytesRead = Serial.readBytesUntil(SERIAL_DELIMITER, inputBuffer, MAXIMUM_MESSAGE_SIZE - 1);
+  inputBuffer[bytesRead] = '\0';
+  if (bytesRead == 0)
+  {
+    return;
+  }
+  strcpy(espMessage.data, inputBuffer);
+  auto result = espnowwrapper.sendWithRetries(espnowwrapper.getBoundPeerAddress(), espMessage, bytesRead + 1);
 }
 
-void radioToSerial()
+void receiveRadioToSerial()
 {
-    if (espnowwrapper.receive(&espMessage) == -1)
-        return;
+  if (espnowwrapper.receive(&espMessage) == -1)
+    return;
 
-    Serial.print(espMessage.data);
-    Serial.print(SERIAL_DELIMITER);
+  Serial.print(espMessage.data);
+  Serial.print(SERIAL_DELIMITER);
 }
 
 void setup()
@@ -55,13 +55,33 @@ void setup()
 
 void loop()
 {
-    if (Serial.available() > 0)
-    {
-        serialToRadio();
-    }
+  processSerialData();
+  processRadioData();
+  outputDebugInfo();
+}
 
-    if (espnowwrapper.areRadioRecvPacketsAvailable())
-    {
-        radioToSerial();
-    }
+void processSerialData()
+{
+  for (int readCount = 0; Serial.available() > 0 && readCount < MAX_LOOP_READS; ++readCount)
+  {
+    sendSerialToRadio();
+  }
+}
+
+void processRadioData()
+{
+  for (int readCount = 0; espnowwrapper.areRadioRecvPacketsAvailable() && readCount < MAX_LOOP_READS; ++readCount)
+  {
+    receiveRadioToSerial();
+  }
+}
+
+void outputDebugInfo()
+{
+  static unsigned long lastDebug = 0;
+  if (millis() - lastDebug >= 2000)
+  {
+    printDebug(("<RSSI>" + String(espnowwrapper.getRSSI())).c_str());
+    lastDebug = millis();
+  }
 }

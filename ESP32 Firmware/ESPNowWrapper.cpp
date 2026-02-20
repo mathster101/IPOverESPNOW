@@ -106,6 +106,36 @@ esp_err_t ESPNowWrapper::send(uint8_t *macAddress, ESPMessage &message, uint16_t
     return result;
 }
 
+esp_err_t ESPNowWrapper::sendWithRetries(uint8_t *macAddress, ESPMessage &message, uint16_t length)
+{
+    esp_err_t result;
+
+    for (uint8_t attempt = 0; attempt < MAX_RETRIES; attempt++)
+    {
+        result = send(macAddress, message, length);
+
+        if (result == ESP_OK)
+        {
+            unsigned long waitStart = millis();
+            while (!readyToSend && (millis() - waitStart < 50))
+            {
+                vTaskDelay(1);
+            }
+
+            if (readyToSend)
+            {
+                return ESP_OK;
+            }
+        }
+
+        if (attempt < MAX_RETRIES - 1)
+        {
+            vTaskDelay(pdMS_TO_TICKS(5));
+        }
+    }
+    return ESP_FAIL;
+}
+
 esp_err_t ESPNowWrapper::receive(ESPMessage *recvdMessage)
 {
     std::lock_guard<std::mutex> lock(queueMutex);
