@@ -4,15 +4,15 @@
 #define BAUD_RATE_SERIAL 921600
 #define SERIAL_DELIMITER '\0'
 #define SERIAL_BUFFER_SIZE 1500 * 30
-
+#define MAX_LOOP_READS 20
 
 ESPNowWrapper espnowwrapper;
 ESPMessage espMessage;
 
 void printDebug(const char *dbgMessage)
 {
-    Serial.printf("<DEBUG>%s", dbgMessage);
-    Serial.print(SERIAL_DELIMITER);
+  Serial.printf("<DEBUG>%s", dbgMessage);
+  Serial.print(SERIAL_DELIMITER);
 }
 
 void sendSerialToRadio()
@@ -39,18 +39,18 @@ void receiveRadioToSerial()
 
 void setup()
 {
-    Serial.setRxBufferSize(SERIAL_BUFFER_SIZE);
-    Serial.setTxBufferSize(SERIAL_BUFFER_SIZE);
-    Serial.begin(BAUD_RATE_SERIAL);
-    if (espnowwrapper.init() != ESP_OK)
+  Serial.setRxBufferSize(SERIAL_BUFFER_SIZE);
+  Serial.setTxBufferSize(SERIAL_BUFFER_SIZE);
+  Serial.begin(BAUD_RATE_SERIAL);
+  if (espnowwrapper.init() != ESP_OK)
+  {
+    while (true)
     {
-        while (true)
-        {
-            printDebug("Error Initializing ESP-NOW");
-            delay(5000);
-        }
+      printDebug("Error Initializing ESP-NOW");
+      delay(5000);
     }
-    printDebug("Init complete");
+  }
+  printDebug("Init complete");
 }
 
 void loop()

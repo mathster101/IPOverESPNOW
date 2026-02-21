@@ -3,9 +3,17 @@
 #include <queue>
 #include <mutex>
 #include <atomic>
+#include <cstdio>
+#define ENABLE_LED
+#ifdef ENABLE_LED
+#include <FastLED.h>
+#define LED_DATA_PIN 48
+#define NUM_LEDS 1
+static CRGB leds[NUM_LEDS];
+#endif
 
-#define RECV_QUEUE_SIZE 10
-
+#define RECV_QUEUE_SIZE 5
+#define MAX_RETRIES 5
 
 uint8_t ESPNowWrapper::boundPeerAddress[6];
 
@@ -15,9 +23,11 @@ static std::mutex queueMutex;
 static int lastRSSI;
 static std::atomic<bool> readyToSend{true};
 static TaskHandle_t beaconTaskHandle;
-static bool isBound = false;
+static TaskHandle_t ledFlashTaskHandle;
+static std::atomic<bool> isBound{false};
 
 static void broadcastMACBeacon(void *parameter);
+static void ledFlashTask(void *parameter);
 
 void dataRecvCB(const esp_now_recv_info_t *esp_now_info, const uint8_t *incomingData, int len)
 {
@@ -25,12 +35,26 @@ void dataRecvCB(const esp_now_recv_info_t *esp_now_info, const uint8_t *incoming
 
     ESPMessage newMessage;
     memcpy(&newMessage, incomingData, len);
-    if (strcmp("BROADCAST BEACON", newMessage.data) == 0)
+    if (strncmp("BROADCAST BEACON", newMessage.data, 15) == 0)
     {
-        if (isBound)
+        int peerRSSI;
+        if (sscanf(newMessage.data, "BROADCAST BEACON RSSI:%d", &peerRSSI) == 1)
         {
-            return;
+            wifi_power_t newPower;
+            if (peerRSSI > -40)
+                newPower = WIFI_POWER_13dBm;
+            else if (peerRSSI > -60)
+                newPower = WIFI_POWER_17dBm;
+            else
+                newPower = WIFI_POWER_21dBm;
+            WiFi.setTxPower(newPower);
         }
+#ifdef ENABLE_LED
+        xTaskNotifyGive(ledFlashTaskHandle);
+#endif
+        if (isBound)
+            return;
+
         esp_now_peer_info_t peer = {};
         memcpy(peer.peer_addr, esp_now_info->src_addr, 6);
         peer.channel = esp_now_info->rx_ctrl->channel;
@@ -70,7 +94,7 @@ esp_err_t ESPNowWrapper::init()
     if (result != ESP_OK)
         return result;
     result = esp_now_register_send_cb(dataSendCB);
-     if (result != ESP_OK)
+    if (result != ESP_OK)
         return result;
     esp_now_peer_info_t broadcastPeer = {};
     memcpy(broadcastPeer.peer_addr, broadcastAddress, 6);
@@ -79,7 +103,19 @@ esp_err_t ESPNowWrapper::init()
     result = esp_now_add_peer(&broadcastPeer);
     if (result != ESP_OK)
         return result;
-    isBound = false;
+    isBound.store(false);
+#ifdef ENABLE_LED
+    FastLED.addLeds<NEOPIXEL, LED_DATA_PIN>(leds, NUM_LEDS);
+    leds[0] = CRGB::Black;
+    FastLED.show();
+    xTaskCreate(
+        ledFlashTask,
+        "LEDFlashTask",
+        2048,
+        nullptr,
+        1,
+        &ledFlashTaskHandle);
+#endif
     xTaskCreate(
         broadcastMACBeacon,
         "BeaconTask",
@@ -101,8 +137,8 @@ esp_err_t ESPNowWrapper::send(uint8_t *macAddress, ESPMessage &message, uint16_t
     {
         vTaskDelay(1);
     };
-    esp_err_t result = esp_now_send(macAddress, (uint8_t *)&message, length + 2); // 2 bytes for size field
     readyToSend = false;
+    esp_err_t result = esp_now_send(macAddress, (uint8_t *)&message, length + 2); // 2 bytes for size field
     return result;
 }
 
@@ -153,6 +189,7 @@ esp_err_t ESPNowWrapper::receive(ESPMessage *recvdMessage)
 
 bool ESPNowWrapper::areRadioRecvPacketsAvailable()
 {
+    std::lock_guard<std::mutex> lock(queueMutex);
     return !receiveQueue.empty();
 }
 
@@ -161,20 +198,35 @@ int ESPNowWrapper::getRSSI()
     return lastRSSI;
 }
 
-uint8_t* ESPNowWrapper::getBoundPeerAddress()
+uint8_t *ESPNowWrapper::getBoundPeerAddress()
 {
     return boundPeerAddress;
 }
 
-void ESPNowWrapper::setBoundPeerAddress(const uint8_t* address)
+void ESPNowWrapper::setBoundPeerAddress(const uint8_t *address)
 {
     memcpy(boundPeerAddress, address, 6);
 }
 
+#ifdef ENABLE_LED
+static void ledFlashTask(void *parameter)
+{
+    while (true)
+    {
+        ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+        leds[0] = CRGB::Green;
+        FastLED.show();
+        vTaskDelay(pdMS_TO_TICKS(10));
+        leds[0] = CRGB::Black;
+        FastLED.show();
+    }
+}
+#endif
+
 void broadcastMACBeacon(void *parameter)
 {
     ESPMessage bcastBeacon;
-    strcpy(bcastBeacon.data, "BROADCAST BEACON");
+    snprintf(bcastBeacon.data, sizeof(bcastBeacon.data), "BROADCAST BEACON RSSI:%d", lastRSSI);
     bcastBeacon.size = strlen(bcastBeacon.data) + 1;
 
     while (true)

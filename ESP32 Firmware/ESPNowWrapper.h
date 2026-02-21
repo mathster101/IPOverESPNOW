@@ -25,6 +25,7 @@ public:
     esp_err_t receive(ESPMessage *recvdMessage);
     bool areRadioRecvPacketsAvailable();
     int getRSSI();
+    ////////////////////////////////
     static uint8_t *getBoundPeerAddress();
     static void setBoundPeerAddress(const uint8_t *address);
 };
