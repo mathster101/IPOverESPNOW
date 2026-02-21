@@ -6,6 +6,7 @@ import config
 import time
 import logging
 import os
+import lz4.block
 
 class Tunnel:
     def __init__(self, tun_ip: str, serial_port: str):
@@ -32,10 +33,15 @@ class Tunnel:
     def tun_to_radio_serial(self):
         """Handle data from TUN interface and forward to serial."""
         try:
-            tun_data = self.tun_interface.read()
-            cobs_encoded = cobs.encode(tun_data)
+            tun_data_raw = self.tun_interface.read()
+            tun_data_compressed = lz4.block.compress(tun_data_raw)
+            if len(tun_data_compressed) < len(tun_data_raw):
+                tun_data_packed = b'\x01' + tun_data_compressed
+            else:
+                tun_data_packed = b'\x00' + tun_data_raw
+            cobs_encoded = cobs.encode(tun_data_packed)
             self.serial_interface.write(cobs_encoded)
-            #print(f"{time.time():.3f}  {len(tun_data)}({len(cobs_encoded)}) Bytes: TUN-->Serial")
+            #print(f"{time.time():.3f}  {len(tun_data_raw)}({len(cobs_encoded)}) Bytes: TUN-->Serial")
         except Exception as e:
             logging.error(f"Error handling TUN data: {e}")
 
@@ -57,7 +63,22 @@ class Tunnel:
             
             try:
                 cobs_decoded = cobs.decode(serial_data)
-                self.tun_interface.write(cobs_decoded)
+                if len(cobs_decoded) > 0:
+                    compression_flag = cobs_decoded[0]
+                    data_payload = cobs_decoded[1:]
+                    
+                    if compression_flag == 0x01:
+                        try:
+                            decompressed_data = lz4.block.decompress(data_payload)
+                            self.tun_interface.write(decompressed_data)
+                        except Exception as e:
+                            logging.error(f"Error decompressing data: {e}")
+                    elif compression_flag == 0x00:  # Raw data
+                        self.tun_interface.write(data_payload)
+                    else:
+                        logging.error(f"Invalid compression flag: {compression_flag}")
+                else:
+                    logging.error("Empty packet received")
                 #print(f"{time.time():.3f}  ({len(serial_data)}){len(cobs_decoded)} Bytes: Serial-->TUN")
             except Exception as e:
                 logging.error(f"Error decoding packet: {e}")
